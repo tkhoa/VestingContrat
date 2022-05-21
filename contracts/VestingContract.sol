@@ -5,9 +5,11 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";  
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";  
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";  
-
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";  
+import "hardhat/console.sol";
 
 contract VestingContract is Ownable{
+    using SafeMath for uint256;
 
     struct UserInfo{
         uint256 amount;
@@ -28,7 +30,7 @@ contract VestingContract is Ownable{
     event VestingFunds(uint256 _totalTokens); 
     event SetStartTime(uint256 _startTime);
     event AddWhitelistUser(address _address, uint256 _amount);
-    event RemoveWHitelistUser(address _address);
+    event RemoveWhitelistUser(address _address);
 
     constructor(address _token,
                 uint256 _firstRelease,
@@ -45,6 +47,16 @@ contract VestingContract is Ownable{
         timePerPeriods = _timePerPeriods;
         cliff = _cliff;
         totalTokens = _totalTokens;
+
+        emit SetStartTime(_startTime);
+    }
+
+    function getBalance() public view returns (uint256){
+        return totalTokens;
+    }
+
+    function getUser(address addr) public view returns ( UserInfo memory){
+        return userInfo[addr];
     }
 
     function fundVesting(uint256 _totalTokens) public onlyOwner{
@@ -52,23 +64,32 @@ contract VestingContract is Ownable{
         // Approve function should be called in token contract
         //token.approve(this.address, totalTokens);
         token.transferFrom(ADMIN, address(this), _totalTokens);
+        // console.log("admin addr:",ADMIN);
+        // console.log("vesting contract addr:",address(this));
+        // console.log("total token: ", _totalTokens);
+        emit VestingFunds(_totalTokens);
     }
 
     function addWhiteList(address _userAddr, uint256 amount, uint256 tokensClaimed) public onlyOwner{
-        userInfo[_userAddr].amount = amount;
-        userInfo[_userAddr].tokensClaimed = tokensClaimed;
+        UserInfo memory newUser = UserInfo(amount, tokensClaimed);
+        userInfo[_userAddr] = newUser;
         //Cant approve because when calling a contract from other, the "owner" in _approve (ERC20) will be changed 
         //token.approve(this.address, _userAddr, _userInfo.amount);
+        // console.log(userInfo[_userAddr].amount);
+        emit AddWhitelistUser(_userAddr, amount);
     }
 
     function claim() public {
+        string memory _ERR_OVERFLOW = "The result is overflow";
+
         address user = msg.sender;
         //require (userInfo[address(user)] != 0);
         //require(now > startTime);
 
         uint256 remainedTokens = 0;
         uint256 remainedTokenPerPeriod = 0;
-        uint256 firstReleaseTokens = firstRelease/100*userInfo[address(user)].amount;
+        //uint256 firstReleaseTokens = firstRelease/100*userInfo[address(user)].amount;
+        uint256 firstReleaseTokens = firstRelease.div(100).mul(userInfo[address(user)].amount);
 
         //uint currentPeriod = 0;
 
@@ -78,32 +99,42 @@ contract VestingContract is Ownable{
                 require(totalTokens > firstReleaseTokens, "Vesting contract doesnt have enought money");
 
                 token.transferFrom(address(this), address(user), firstReleaseTokens);
-                //totalTokens -= firstReleaseTokens;
-                userInfo[address(user)].tokensClaimed += firstReleaseTokens;
+                //userInfo[address(user)].tokensClaimed += firstReleaseTokens;
+                userInfo[address(user)].tokensClaimed = SafeMath.add(userInfo[address(user)].tokensClaimed, firstReleaseTokens);
+
+                emit TokenClaimed(address(user), firstReleaseTokens);
                 // remainedTokens = userInfo[user.address].amount - firstReleaseTokens; //có thể sửa
                 // remainedTokenPerPeriod = remainedToken / totalPeriods;
             }
             else {
                 uint256 userAmount = userInfo[address(user)].amount;
                 uint256 userClaimedTokens = userInfo[address(user)].tokensClaimed;
-                uint256 tokensPerPeriod = (userAmount - firstReleaseTokens) / totalPeriods;
-                uint256 claimedPeriod = (userClaimedTokens - firstReleaseTokens) / tokensPerPeriod;
+                //uint256 tokensPerPeriod = (userAmount - firstReleaseTokens) / totalPeriods;
+                uint256 tokensPerPeriod = userAmount.sub(firstReleaseTokens).div(totalPeriods);
+                //uint256 claimedPeriod = (userClaimedTokens - firstReleaseTokens) / tokensPerPeriod;
+                uint256 claimedPeriod = userClaimedTokens.sub(firstReleaseTokens).div(tokensPerPeriod);
                 //so sanh thoi gian
-                if (block.timestamp >= (claimedPeriod + 1) * timePerPeriods){
-                    //required
-                    //uint256 claimableTokens = ((now - claimedPeriod * timePerPeriods)/ timePerPeriods) * (tokensPerPeriod);
-                    uint256 claimableTokens = (block.timestamp / timePerPeriods - claimedPeriod) * tokensPerPeriod;
-                    token.transferFrom(address(this), address(user), claimableTokens);
-                    userInfo[address(user)].tokensClaimed += claimableTokens;
+                //if (block.timestamp - startTime >= (claimedPeriod + 1) * timePerPeriods) + cliff{
+                if (block.timestamp.sub(startTime).sub(cliff) >= claimedPeriod.add(1).mul(timePerPeriods)){
+                    if (claimedPeriod <= totalPeriods) {
+                        uint256 claimableTokens = block.timestamp.sub(startTime).sub(cliff).div(timePerPeriods).sub(claimedPeriod).mul(tokensPerPeriod);
+
+                        token.transferFrom(address(this), address(user), claimableTokens);
+                        //userInfo[address(user)].tokensClaimed += claimableTokens;
+                        userClaimedTokens = userInfo[address(user)].tokensClaimed.add(claimableTokens);
+                        
+                        if ((claimedPeriod == totalPeriods) && (userClaimedTokens < userAmount)){
+                            userClaimedTokens = userClaimedTokens.add(userAmount - userClaimedTokens);
+                        }
+                        userInfo[address(user)].tokensClaimed = userClaimedTokens;
+                        emit TokenClaimed(address(user), claimableTokens);
+
+                    }
                 }
-                // uint8 currentPeriod = totalPeriods - remainedTokens/ remainedTokenPerPeriod;
-                // uint8 claimedPeriod = (userInfo[user.address].tokensClaimed - firstReleaseTokens)/remainedTokenPerPeriod;
-                // if (  currentPeriod > claimedPeriod){
-                //     uint8 claimablePeriods = currentPeriod - claimedPeriod;
-                //     uint256 claimableTokens = claimablePeriods * remainedTokenPerPeriod;
-                //     token.transferFrom(this.address, user.address, claimableTokens);
-                //     remainedTokens = remainedTokens - claimableTokens;
-                // }
+                else{
+                    console.log("that not yet time to withdraw tokens");
+                }
+                
             }
         }
     }
