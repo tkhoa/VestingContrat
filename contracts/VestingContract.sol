@@ -55,12 +55,21 @@ contract VestingContract is Ownable{
         return totalTokens;
     }
 
-    function getUser(address addr) public view returns ( UserInfo memory){
-        return userInfo[addr];
+    function getUserAmount(address addr) public view returns ( uint256){
+        return userInfo[addr].amount;
+    }
+
+    function getUserTokenClaimed(address addr) public view returns ( uint256){
+        return userInfo[addr].tokensClaimed;
+    }
+
+    function getTotalTokens() public view  returns (uint256){
+        return totalTokens;
     }
 
     function fundVesting(uint256 _totalTokens) public onlyOwner{
         address ADMIN = msg.sender;
+        console.log("ADMIN: ",ADMIN);
         // Approve function should be called in token contract
         //token.approve(this.address, totalTokens);
         token.transferFrom(ADMIN, address(this), _totalTokens);
@@ -71,16 +80,22 @@ contract VestingContract is Ownable{
     }
 
     function addWhiteList(address _userAddr, uint256 amount, uint256 tokensClaimed) public onlyOwner{
-        UserInfo memory newUser = UserInfo(amount, tokensClaimed);
+        UserInfo memory newUser =  UserInfo(amount, tokensClaimed);
         userInfo[_userAddr] = newUser;
+
+        console.log("user address : ",_userAddr);
+        console.log("user amount: ",userInfo[_userAddr].amount);
+        console.log("user token claimed: ",userInfo[_userAddr].tokensClaimed);
         //Cant approve because when calling a contract from other, the "owner" in _approve (ERC20) will be changed 
         //token.approve(this.address, _userAddr, _userInfo.amount);
         // console.log(userInfo[_userAddr].amount);
+        // token.approve(address(this), amount);
+        // console.log("approve: ", token.allowance(address(this), address(this)));
+
         emit AddWhitelistUser(_userAddr, amount);
     }
 
     function claim() public {
-        string memory _ERR_OVERFLOW = "The result is overflow";
 
         address user = msg.sender;
         //require (userInfo[address(user)] != 0);
@@ -89,16 +104,27 @@ contract VestingContract is Ownable{
         uint256 remainedTokens = 0;
         uint256 remainedTokenPerPeriod = 0;
         //uint256 firstReleaseTokens = firstRelease/100*userInfo[address(user)].amount;
-        uint256 firstReleaseTokens = firstRelease.div(100).mul(userInfo[address(user)].amount);
+        uint256 firstReleaseTokens = firstRelease.mul(userInfo[address(user)].amount).div(100);
+        
+        console.log("firstReleaseTokens: ",firstReleaseTokens);
 
         //uint currentPeriod = 0;
+        console.log("test test",startTime);
+        console.log("block time: ",block.timestamp);
 
-        if (block.timestamp > startTime){//có thể bỏ
+        if (block.timestamp >= startTime){//có thể bỏ
+            console.log("start time: ",startTime);
             //nhớ đổi xuống dưới else
             if ((userInfo[address(user)].tokensClaimed == 0)){
-                require(totalTokens > firstReleaseTokens, "Vesting contract doesnt have enought money");
 
-                token.transferFrom(address(this), address(user), firstReleaseTokens);
+                require(totalTokens > firstReleaseTokens, "Vesting contract doesnt have enought money");
+                console.log("HERE.............");
+
+                console.log(address(this));
+                console.log(address(user));
+                console.log(firstReleaseTokens);
+                //token.transferFrom(address(this), address(user), firstReleaseTokens);
+                token.transfer(address(user),firstReleaseTokens);
                 //userInfo[address(user)].tokensClaimed += firstReleaseTokens;
                 userInfo[address(user)].tokensClaimed = SafeMath.add(userInfo[address(user)].tokensClaimed, firstReleaseTokens);
 
@@ -106,7 +132,7 @@ contract VestingContract is Ownable{
                 // remainedTokens = userInfo[user.address].amount - firstReleaseTokens; //có thể sửa
                 // remainedTokenPerPeriod = remainedToken / totalPeriods;
             }
-            else {
+            {
                 uint256 userAmount = userInfo[address(user)].amount;
                 uint256 userClaimedTokens = userInfo[address(user)].tokensClaimed;
                 //uint256 tokensPerPeriod = (userAmount - firstReleaseTokens) / totalPeriods;
@@ -116,10 +142,14 @@ contract VestingContract is Ownable{
                 //so sanh thoi gian
                 //if (block.timestamp - startTime >= (claimedPeriod + 1) * timePerPeriods) + cliff{
                 if (block.timestamp.sub(startTime).sub(cliff) >= claimedPeriod.add(1).mul(timePerPeriods)){
-                    if (claimedPeriod <= totalPeriods) {
+                    if (block.timestamp > totalPeriods.mul(timePerPeriods)){
+                        uint256 claimableTokens = userAmount.sub(firstReleaseTokens);
+                    } 
+                    else if (claimedPeriod <= totalPeriods) {
                         uint256 claimableTokens = block.timestamp.sub(startTime).sub(cliff).div(timePerPeriods).sub(claimedPeriod).mul(tokensPerPeriod);
 
-                        token.transferFrom(address(this), address(user), claimableTokens);
+                        token.transfer(address(user), claimableTokens);
+                        //token.transferFrom(address(this), address(user), claimableTokens);
                         //userInfo[address(user)].tokensClaimed += claimableTokens;
                         userClaimedTokens = userInfo[address(user)].tokensClaimed.add(claimableTokens);
                         
