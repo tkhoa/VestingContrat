@@ -69,7 +69,6 @@ contract VestingContract is Ownable{
 
     function fundVesting(uint256 _totalTokens) public onlyOwner{
         address ADMIN = msg.sender;
-        console.log("ADMIN: ",ADMIN);
         // Approve function should be called in token contract
         //token.approve(this.address, totalTokens);
         token.transferFrom(ADMIN, address(this), _totalTokens);
@@ -83,9 +82,9 @@ contract VestingContract is Ownable{
         UserInfo memory newUser =  UserInfo(amount, tokensClaimed);
         userInfo[_userAddr] = newUser;
 
-        console.log("user address : ",_userAddr);
-        console.log("user amount: ",userInfo[_userAddr].amount);
-        console.log("user token claimed: ",userInfo[_userAddr].tokensClaimed);
+        // console.log("user address : ",_userAddr);
+        // console.log("user amount: ",userInfo[_userAddr].amount);
+        // console.log("user token claimed: ",userInfo[_userAddr].tokensClaimed);
         //Cant approve because when calling a contract from other, the "owner" in _approve (ERC20) will be changed 
         //token.approve(this.address, _userAddr, _userInfo.amount);
         // console.log(userInfo[_userAddr].amount);
@@ -98,68 +97,61 @@ contract VestingContract is Ownable{
     function claim() public {
 
         address user = msg.sender;
+        require(userInfo[user].amount  > userInfo[user].tokensClaimed, "you have claimed all your tokens");
         //require (userInfo[address(user)] != 0);
         //require(now > startTime);
 
-        uint256 remainedTokens = 0;
-        uint256 remainedTokenPerPeriod = 0;
-        //uint256 firstReleaseTokens = firstRelease/100*userInfo[address(user)].amount;
         uint256 firstReleaseTokens = firstRelease.mul(userInfo[address(user)].amount).div(100);
         
         console.log("firstReleaseTokens: ",firstReleaseTokens);
-
-        //uint currentPeriod = 0;
         console.log("test test",startTime);
         console.log("block time: ",block.timestamp);
 
         if (block.timestamp >= startTime){//có thể bỏ
             console.log("start time: ",startTime);
             //nhớ đổi xuống dưới else
-            if ((userInfo[address(user)].tokensClaimed == 0)){
+
+            uint256 userClaimedTokens = userInfo[address(user)].tokensClaimed;
+
+            if ((userClaimedTokens == 0)){
 
                 require(totalTokens > firstReleaseTokens, "Vesting contract doesnt have enought money");
-                console.log("HERE.............");
+                // console.log("HERE.............");
 
-                console.log(address(this));
-                console.log(address(user));
-                console.log(firstReleaseTokens);
-                //token.transferFrom(address(this), address(user), firstReleaseTokens);
+                // console.log(address(this));
+                // console.log(address(user));
+                // console.log(firstReleaseTokens);
                 token.transfer(address(user),firstReleaseTokens);
-                //userInfo[address(user)].tokensClaimed += firstReleaseTokens;
-                userInfo[address(user)].tokensClaimed = SafeMath.add(userInfo[address(user)].tokensClaimed, firstReleaseTokens);
+                userClaimedTokens= SafeMath.add(userClaimedTokens, firstReleaseTokens);
 
                 emit TokenClaimed(address(user), firstReleaseTokens);
-                // remainedTokens = userInfo[user.address].amount - firstReleaseTokens; //có thể sửa
-                // remainedTokenPerPeriod = remainedToken / totalPeriods;
             }
             {
                 uint256 userAmount = userInfo[address(user)].amount;
-                uint256 userClaimedTokens = userInfo[address(user)].tokensClaimed;
-                //uint256 tokensPerPeriod = (userAmount - firstReleaseTokens) / totalPeriods;
                 uint256 tokensPerPeriod = userAmount.sub(firstReleaseTokens).div(totalPeriods);
-                //uint256 claimedPeriod = (userClaimedTokens - firstReleaseTokens) / tokensPerPeriod;
-                uint256 claimedPeriod = userClaimedTokens.sub(firstReleaseTokens).div(tokensPerPeriod);
+                uint256 claimedPeriods = userClaimedTokens.sub(firstReleaseTokens).div(tokensPerPeriod);
                 //so sanh thoi gian
-                //if (block.timestamp - startTime >= (claimedPeriod + 1) * timePerPeriods) + cliff{
-                if (block.timestamp.sub(startTime).sub(cliff) >= claimedPeriod.add(1).mul(timePerPeriods)){
+                if (block.timestamp.sub(startTime).sub(cliff) >= claimedPeriods.add(1).mul(timePerPeriods)){
+                    uint256 claimableTokens = 0;
+
                     if (block.timestamp > totalPeriods.mul(timePerPeriods)){
-                        uint256 claimableTokens = userAmount.sub(firstReleaseTokens);
+                        claimableTokens = userAmount.sub(userClaimedTokens);
                     } 
-                    else if (claimedPeriod <= totalPeriods) {
-                        uint256 claimableTokens = block.timestamp.sub(startTime).sub(cliff).div(timePerPeriods).sub(claimedPeriod).mul(tokensPerPeriod);
-
-                        token.transfer(address(user), claimableTokens);
-                        //token.transferFrom(address(this), address(user), claimableTokens);
-                        //userInfo[address(user)].tokensClaimed += claimableTokens;
-                        userClaimedTokens = userInfo[address(user)].tokensClaimed.add(claimableTokens);
-                        
-                        if ((claimedPeriod == totalPeriods) && (userClaimedTokens < userAmount)){
-                            userClaimedTokens = userClaimedTokens.add(userAmount - userClaimedTokens);
-                        }
-                        userInfo[address(user)].tokensClaimed = userClaimedTokens;
-                        emit TokenClaimed(address(user), claimableTokens);
-
+                    else if (claimedPeriods <= totalPeriods) {
+                        claimableTokens = block.timestamp.sub(startTime).sub(cliff).div(timePerPeriods).sub(claimedPeriods).mul(tokensPerPeriod);
                     }
+
+                    token.transfer(address(user), claimableTokens);
+                    userClaimedTokens = userClaimedTokens.add(claimableTokens);
+                    
+                    if ((claimedPeriods == totalPeriods) && (userClaimedTokens < userAmount)){
+                        claimableTokens = userAmount.sub(userClaimedTokens);
+                        token.transfer(address(user), claimableTokens);
+                        userClaimedTokens = userClaimedTokens.add(claimableTokens);
+                    }
+
+                    userInfo[address(user)].tokensClaimed = userClaimedTokens;
+                    emit TokenClaimed(address(user), claimableTokens);
                 }
                 else{
                     console.log("that not yet time to withdraw tokens");
