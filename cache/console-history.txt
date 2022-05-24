@@ -1,0 +1,6 @@
+block.timestamp()
+block.timestamp
+console.log(block.timestamp)
+var block = await network.provider.send("eth_blockNumber")
+await network.provider.send("eth_blockNumber").timestamp()
+await network.provider.send("eth_blockNumber")

@@ -115,8 +115,7 @@ describe("Vesting contract", function(){
         //Test Claim function
         const initialBalanceUser1 = await oilToken.balanceOf(addr1.address);
         console.log("User1 starting claim...");
-        //setTimeout(vestingContract.connect(addr1.address).claimed(),4500); //claiming after start time
-        //await function(){setTimeout(vestingContract.connect(addr1.address).claim(),60000);};
+        
         await new Promise((resolve) => setTimeout(resolve, 18500));
         await vestingContract.connect(addr1).claim();
         console.log("User1 finish...");

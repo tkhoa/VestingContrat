@@ -60,6 +60,6 @@ module.exports = {
     artifacts: "./artifacts"
   },
   mocha: {
-    timeout: 40000
+    timeout: 9000000
   }
 };

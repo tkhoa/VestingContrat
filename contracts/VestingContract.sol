@@ -9,6 +9,8 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "hardhat/console.sol";
 
 contract VestingContract is Ownable{
+    using SafeMath for uint8;
+    using SafeMath for uint64;
     using SafeMath for uint256;
 
     struct UserInfo{
@@ -82,14 +84,8 @@ contract VestingContract is Ownable{
         UserInfo memory newUser =  UserInfo(amount, tokensClaimed);
         userInfo[_userAddr] = newUser;
 
-        // console.log("user address : ",_userAddr);
-        // console.log("user amount: ",userInfo[_userAddr].amount);
-        // console.log("user token claimed: ",userInfo[_userAddr].tokensClaimed);
         //Cant approve because when calling a contract from other, the "owner" in _approve (ERC20) will be changed 
-        //token.approve(this.address, _userAddr, _userInfo.amount);
-        // console.log(userInfo[_userAddr].amount);
         // token.approve(address(this), amount);
-        // console.log("approve: ", token.allowance(address(this), address(this)));
 
         emit AddWhitelistUser(_userAddr, amount);
     }
@@ -116,24 +112,21 @@ contract VestingContract is Ownable{
             if ((userClaimedTokens == 0)){
 
                 require(totalTokens > firstReleaseTokens, "Vesting contract doesnt have enought money");
-                // console.log("HERE.............");
-
-                // console.log(address(this));
-                // console.log(address(user));
-                // console.log(firstReleaseTokens);
+                
                 token.transfer(address(user),firstReleaseTokens);
                 userClaimedTokens= SafeMath.add(userClaimedTokens, firstReleaseTokens);
 
                 emit TokenClaimed(address(user), firstReleaseTokens);
             }
             {
+                
                 uint256 userAmount = userInfo[address(user)].amount;
                 uint256 tokensPerPeriod = userAmount.sub(firstReleaseTokens).div(totalPeriods);
                 uint256 claimedPeriods = userClaimedTokens.sub(firstReleaseTokens).div(tokensPerPeriod);
                 //so sanh thoi gian
-                if (block.timestamp.sub(startTime).sub(cliff) >= claimedPeriods.add(1).mul(timePerPeriods)){
+                if ((block.timestamp.sub(cliff) >= startTime) && (block.timestamp.sub(startTime).sub(cliff) >= claimedPeriods.add(1).mul(timePerPeriods))){
                     uint256 claimableTokens = 0;
-
+                    console.log("here======");
                     if (block.timestamp > totalPeriods.mul(timePerPeriods)){
                         claimableTokens = userAmount.sub(userClaimedTokens);
                     } 
@@ -151,6 +144,8 @@ contract VestingContract is Ownable{
                     }
 
                     userInfo[address(user)].tokensClaimed = userClaimedTokens;
+                    console.log("claim time: ", block.timestamp);
+                    console.log("value: ", claimableTokens);
                     emit TokenClaimed(address(user), claimableTokens);
                 }
                 else{
